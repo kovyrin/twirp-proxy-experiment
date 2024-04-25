@@ -1,0 +1,37 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    faraday (2.9.0)
+      faraday-net_http (>= 2.0, < 3.2)
+    faraday-net_http (3.1.0)
+      net-http
+    google-protobuf (3.25.3)
+    google-protobuf (3.25.3-aarch64-linux)
+    google-protobuf (3.25.3-arm64-darwin)
+    google-protobuf (3.25.3-x86-linux)
+    google-protobuf (3.25.3-x86_64-darwin)
+    google-protobuf (3.25.3-x86_64-linux)
+    net-http (0.4.1)
+      uri
+    rack (2.2.9)
+    twirp (1.10.0)
+      faraday (< 3)
+      google-protobuf (~> 3.0, >= 3.7.0)
+    uri (0.13.0)
+    webrick (1.8.1)
+
+PLATFORMS
+  aarch64-linux
+  arm64-darwin
+  ruby
+  x86-linux
+  x86_64-darwin
+  x86_64-linux
+
+DEPENDENCIES
+  rack (~> 2.0)
+  twirp
+  webrick
+
+BUNDLED WITH
+   2.5.9
