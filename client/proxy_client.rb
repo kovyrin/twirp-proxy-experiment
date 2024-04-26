@@ -19,13 +19,13 @@ def hello(name, headers: nil)
   end
 end
 
-puts "Simple Twirp Client call:"
-hello("Simple World")
-puts "--------------------------"
-
-# puts "Twirp Client call with a custom TTL:"
-# hello("TTL World", headers: { "Cache-Control" => "max-age=60" })
+# puts "Simple Twirp Client call:"
+# hello("Simple World")
 # puts "--------------------------"
+
+puts "Twirp Client call with a custom TTL:"
+hello("TTL World", headers: { "Cache-Control" => "max-age=60" })
+puts "--------------------------"
 
 # puts "Twirp Client call with forced refresh:"
 # hello("Refresh World", headers: { "Cache-Control" => "no-cache" })
