@@ -11,7 +11,7 @@ CLIENT = Example::HelloWorld::HelloWorldClient.new("http://localhost:3002/twirp"
 def hello(name, headers: {})
   headers['x-request-id'] = SecureRandom.uuid
 
-  puts "  - Calling the server with name: #{name} and headers: #{headers.inspect}"
+  puts "  - RPC (#{name}) with headers: #{headers.inspect}"
   resp = CLIENT.hello({ name: }, { headers: })
   raise resp.error if resp.error
 
@@ -25,6 +25,7 @@ def assert_equal(res1, res2)
     puts "ERROR! Results do not match! (#{res1.inspect} != #{res2.inspect})"
     exit(1)
   end
+  puts
 end
 
 def refute_equal(res1, res2)
@@ -34,6 +35,15 @@ def refute_equal(res1, res2)
     puts "ERROR! Results match! (#{res1.inspect})"
     exit(1)
   end
+  puts
+end
+
+def sleep_with_progress(seconds)
+  seconds.times do
+    print "."
+    sleep(1)
+  end
+  puts
 end
 
 puts "--------------------------------------------------------------------------"
@@ -44,7 +54,6 @@ result1 = hello("Simple World")
 puts "* Making the second call to the server (results should be the same since it is served from the cache)"
 result2 = hello("Simple World")
 assert_equal(result1, result2)
-puts
 
 puts "--------------------------------------------------------------------------"
 puts "Twirp Client call with forced refresh:"
@@ -55,7 +64,6 @@ result1 = hello("Refresh World", headers:)
 puts "* Making the second call to the server (results should be different since it is not served from the cache)"
 result2 = hello("Refresh World", headers:)
 refute_equal(result1, result2)
-puts
 
 puts "--------------------------------------------------------------------------"
 puts "Twirp Client call with a custom TTL:"
@@ -68,13 +76,49 @@ result2 = hello("TTL World", headers:)
 assert_equal(result1, result2)
 
 print "* Sleeping for 3 seconds to allow the cache to expire..."
-3.times do
-  sleep(1)
-  print "."
-end
-puts " Done!"
+sleep_with_progress(3)
 
 puts "* Making the third call to the server (results should be different since the cache has expired)"
 result3 = hello("TTL World", headers:)
 refute_equal(result1, result3)
-puts
+
+puts "--------------------------------------------------------------------------"
+puts "Twirp Client call with a custom TTL and forced refresh:"
+puts "* Making the first call to the server"
+result1 = hello("TTL Refresh World", headers: { "Cache-Control" => "max-age=2" })
+
+puts "* Making the second call to the server (results should be the same since it is served from the cache)"
+result2 = hello("TTL Refresh World", headers: { "Cache-Control" => "max-age=2" })
+assert_equal(result1, result2)
+
+puts "* Making the third call to the server (results should be different since we are forcing a refresh)"
+result3 = hello("TTL Refresh World", headers: { "Cache-Control" => "no-cache" })
+refute_equal(result1, result3)
+
+puts "* Making the fourth call to the server (results should be the same as the third call since it is served from the cache)"
+result4 = hello("TTL Refresh World")
+assert_equal(result3, result4)
+
+puts "--------------------------------------------------------------------------"
+puts "Twirp Client call with a custom TTL and stale-while-revalidate:"
+puts "* Making the first call to the server"
+headers = { "Cache-Control" => "max-age=2, stale-while-revalidate=2" }
+result1 = hello("SWR World", headers:)
+
+puts "* Making the second call to the server (results should be the same since it is served from the cache)"
+result2 = hello("SWR World", headers:)
+assert_equal(result1, result2)
+
+print "* Sleeping for 3 seconds to allow the cache to expire..."
+sleep_with_progress(3)
+
+puts "* Making the third call to the server (results should be the same since it is served from the cache)"
+result3 = hello("SWR World", headers:)
+assert_equal(result1, result3)
+
+puts "* Making the fourth call to the server (results should be different since the cache has been updated in the background)"
+result4 = hello("SWR World", headers:)
+refute_equal(result1, result4)
+
+puts "--------------------------------------------------------------------------"
+puts "All tests passed!"

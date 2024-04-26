@@ -34,6 +34,12 @@ sub vcl_recv {
         std.log("Client requested max-age=" + req.http.x-cache-max-age);
     }
 
+    # Handling stale-while-revalidate value from the client
+    if (req.http.Cache-Control ~ "stale-while-revalidate=(\d+)") {
+        set req.http.x-cache-stale-while-revalidate = regsub(req.http.Cache-Control, ".*stale-while-revalidate=(\d+).*", "\1");
+        std.log("Client requested stale-while-revalidate=" + req.http.x-cache-stale-while-revalidate);
+    }
+
     # Allow POST requests to be cached
     if (req.method == "POST") {
         std.log("Attempting to cache a POST request: " + req.url);
@@ -57,10 +63,24 @@ sub vcl_backend_fetch {
 }
 
 sub vcl_backend_response {
-    if (beresp.ttl > 0s && bereq.http.x-cache-max-age) {
-        std.log("Setting TTL to the client-provided value: " + bereq.http.x-cache-max-age + "s");
-        set beresp.ttl = std.duration(bereq.http.x-cache-max-age + "s", 0s);
-        set beresp.grace = 0s;
+    if (beresp.ttl > 0s) {
+        if (bereq.http.x-cache-max-age) {
+            std.log("Setting TTL to the client-provided value: " + bereq.http.x-cache-max-age + "s");
+            set beresp.ttl = std.duration(bereq.http.x-cache-max-age + "s", 0s);
+        } else {
+            std.log("Default TTL value of 2 minutes");
+            set beresp.ttl = 120s;
+        }
+
+        if (bereq.http.x-cache-stale-while-revalidate) {
+            std.log("Setting grace to the client-provided value: " + bereq.http.x-cache-stale-while-revalidate + "s");
+            set beresp.grace = std.duration(bereq.http.x-cache-stale-while-revalidate + "s", 0s);
+        } else {
+            std.log("Setting grace to 0s to prevent serving stale content");
+            set beresp.grace = 0s;
+        }
+
+        # Set the keep time to 7 days to prevent the cache from being purged too soon
         set beresp.keep = 7d;
     }
 }
