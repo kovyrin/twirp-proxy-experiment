@@ -11,7 +11,7 @@ require_relative '../proto/service_twirp.rb'
 class HelloWorldHandler
   def hello(req, env)
     puts ">> Hello #{req.name}"
-    {message: "Hello #{req.name} on #{Time.now}"}
+    {message: "Hello #{req.name} on #{Time.now.to_f}"}
   end
 end
 
