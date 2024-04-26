@@ -1,4 +1,4 @@
-Experiments with running Twirp API requests through an HTTP proxy.
+# Experiments with running Twirp API requests through an HTTP proxy.
 
 The idea is to allow Twirp clients to make requests through a Varnish cache while making
 it possible for the clients to control caching policies per request. Specific policies we want to support:
@@ -8,7 +8,7 @@ it possible for the clients to control caching policies per request. Specific po
 * `no-cache` - Forced revalidation of the response.
 * `no-store` - Do not cache the response.
 
-# Running the example
+## Running the example
 
 1. Prepare the environment:
 ```
@@ -44,7 +44,7 @@ def cd shopify/twirp-proxy-experiment
 dev proxy-client
 ```
 
-# Dev Setup
+## Dev Setup
 
 ```
 bundle install
