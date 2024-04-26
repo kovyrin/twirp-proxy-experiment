@@ -16,7 +16,7 @@ dev clone shopify/twirp-proxy-experiment
 dev up
 ```
 
-1. Start the server (in a separate terminal):
+2. Start the server (in a separate terminal):
 
 ```
 dev cd shopify/twirp-proxy-experiment
