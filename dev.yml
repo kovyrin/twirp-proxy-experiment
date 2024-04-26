@@ -1,0 +1,37 @@
+name: twirp-proxy-experiment
+
+type: ruby
+
+up:
+  - ruby
+  - bundler
+
+  - packages:
+    - varnish
+    - libtool
+
+  - custom:
+      name: Install varnish modules
+      met?: test "$(brew --prefix)/lib/varnish/vmods/libvmod_bodyaccess.so"
+      meet: ./proxy/install-modules.sh
+
+commands:
+  server:
+    desc: 'Run the server'
+    run: server/server.rb
+
+  proxy:
+    desc: 'Run the proxy'
+    run: proxy/start.sh
+
+  proxy-logs:
+    desc: 'Show the proxy logs'
+    run: varnishlog -n /opt/homebrew/var/varnish -u -v
+
+  client:
+    desc: 'Run the client once'
+    run: client/client.rb
+
+  proxy-client:
+    desc: 'Run the client through the proxy'
+    run: client/proxy_client.rb
