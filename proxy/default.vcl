@@ -11,6 +11,8 @@ backend default {
 }
 
 sub vcl_recv {
+    unset req.http.x-request-id;
+
     set req.http.x-method = req.method;
     unset req.http.x-attempt-to-cache-post;
 
@@ -58,5 +60,7 @@ sub vcl_backend_response {
     if (beresp.ttl > 0s && bereq.http.x-cache-max-age) {
         std.log("Setting TTL to the client-provided value: " + bereq.http.x-cache-max-age + "s");
         set beresp.ttl = std.duration(bereq.http.x-cache-max-age + "s", 0s);
+        set beresp.grace = 0s;
+        set beresp.keep = 7d;
     }
 }
