@@ -1,3 +1,13 @@
+GIT
+  remote: https://github.com/kovyrin/twirp-ruby.git
+  revision: c2d2d923e84d448e033cc7c88a08eaeecd65542e
+  branch: kovyrin/expose-response-headers
+  specs:
+    twirp (1.10.0)
+      faraday (< 3)
+      google-protobuf (~> 3.0, >= 3.7.0)
+      rack (>= 2.2.3)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -19,9 +29,6 @@ GEM
       coderay (~> 1.1)
       method_source (~> 1.0)
     rack (2.2.9)
-    twirp (1.10.0)
-      faraday (< 3)
-      google-protobuf (~> 3.0, >= 3.7.0)
     uri (0.13.0)
     webrick (1.8.1)
 
@@ -36,7 +43,7 @@ PLATFORMS
 DEPENDENCIES
   pry
   rack (~> 2.0)
-  twirp
+  twirp!
   webrick
 
 BUNDLED WITH

@@ -15,6 +15,7 @@ def hello(name, headers: {})
   resp = CLIENT.hello({ name: }, { headers: })
   raise resp.error if resp.error
 
+  puts "  - Response: #{resp.data.message.inspect} (age: #{resp.headers['age']})"
   resp.data.message
 end
 
