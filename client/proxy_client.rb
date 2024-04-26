@@ -7,15 +7,16 @@ require 'securerandom'
 
 # Call the API via a local proxy
 CLIENT = Example::HelloWorld::HelloWorldClient.new("http://localhost:3002/twirp")
+TEST_ID = SecureRandom.uuid
 
 def hello(name, headers: {})
   headers['x-request-id'] = SecureRandom.uuid
 
   puts "  - RPC (#{name}) with headers: #{headers.inspect}"
-  resp = CLIENT.hello({ name: }, { headers: })
+  resp = CLIENT.hello({ name: "#{name} (#{TEST_ID})" }, { headers: })
   raise resp.error if resp.error
 
-  puts "  - Response: #{resp.data.message.inspect} (age: #{resp.headers['age']})"
+  puts "  - Response: #{resp.data.message.inspect} (cache: #{resp.headers['X-Cache']}, age: #{resp.headers['age']})"
   resp.data.message
 end
 
