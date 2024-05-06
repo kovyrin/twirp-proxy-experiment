@@ -2,11 +2,12 @@
 # frozen_string_literal: true
 
 require 'bundler/setup'
-require_relative '../proto/service_twirp.rb'
 require 'securerandom'
 require 'dalli'
 require 'pry'
 require 'concurrent-ruby'
+
+require_relative '../proto/service_twirp.rb'
 
 class CachedHelloWorldClient < ::Twirp::Client
   DEFAULT_TTL = 60 # seconds
@@ -42,6 +43,7 @@ class CachedHelloWorldClient < ::Twirp::Client
     # Cache the response with a TTL of max_age + a grace period to allow
     # for stale responses to be served while the cache is being revalidated.
     cache_ttl = max_age + [stale_white_revalidate_age, sif_error_age].max
+    now = Time.now.to_i
 
     cache_hit = nil
     cas_token = nil
@@ -49,8 +51,8 @@ class CachedHelloWorldClient < ::Twirp::Client
       cache_hit, cas_token = cache.get_cas(cache_key)
 
       # The cache is still fresh, return the cached response
-      if cache_hit && cache_hit[:cached_at] + max_age >= Time.now
-        return cached_response(cache_hit)
+      if cache_hit && cache_hit[:cached_at] + max_age >= now
+        return cached_response(cache_hit, now)
       end
     end
 
@@ -60,21 +62,21 @@ class CachedHelloWorldClient < ::Twirp::Client
       # Revalidate the cache in the background
       thread_pool.post do
         response = super
-        if response.status >= 200 && response.status < 300
+        if response.success?
           cache_response(response, cache_key, cache_ttl, cas_token)
         end
       end
 
       # Return the stale cached response if we are still within the stale-while-revalidate grace period
-      if cache_hit[:cached_at] + max_age + stale_white_revalidate_age >= Time.now
-        return cached_response(cache_hit)
+      if cache_hit[:cached_at] + max_age + stale_white_revalidate_age >= now
+        return cached_response(cache_hit, now)
       end
     end
 
     # The cache is either empty or expired, make the request to the upstream service
     response = super
 
-    if response.status >= 200 && response.status < 300
+    if response.success?
       # The request was successful, cache the response unless specifically asked not to
       unless cache_control.include?('no-store')
         cache_response(response, cache_key, cache_ttl, cas_token)
@@ -84,8 +86,8 @@ class CachedHelloWorldClient < ::Twirp::Client
       if cache_hit && sif_error_age > 0
         # Return the stale cached response if the backend request failed and
         # we are still within the stale-if-error grace period
-        if cache_hit[:cached_at] + max_age + sif_error_age >= Time.now
-          return cached_response(cache_hit)
+        if cache_hit[:cached_at] + max_age + sif_error_age >= now
+          return cached_response(cache_hit, now)
         end
       end
     end
@@ -97,12 +99,12 @@ class CachedHelloWorldClient < ::Twirp::Client
     "#{service_full_name}/#{rpc_method}/#{Digest::SHA256.hexdigest(body)}"
   end
 
-  def self.cached_response(cache_response)
+  def self.cached_response(cache_response, now)
     response = cache_response[:response]
     cached_at = cache_response[:cached_at]
 
     response.headers['X-Cache'] = 'HIT'
-    response.headers['Age'] = (Time.now - cached_at).to_i
+    response.headers['Age'] = now - cached_at
 
     response
   end
@@ -117,7 +119,7 @@ class CachedHelloWorldClient < ::Twirp::Client
     cas_token ||= 0 # default value for first time cache writes
     cache_value = {
       response: response,
-      cached_at: Time.now,
+      cached_at: Time.now.to_i,
     }
     # CAS ensures we do not overwrite a newer cache entry
     cache.set_cas(cache_key, cache_value, cas_token, cache_ttl)
