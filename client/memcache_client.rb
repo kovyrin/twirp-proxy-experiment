@@ -19,32 +19,25 @@ class CachedHelloWorldClient < ::Twirp::Client
     def make_http_request(conn, service_full_name, rpc_method, content_type, req_opts, body)
       cache_key = cache_key_for(service_full_name, rpc_method, body)
 
-      headers = req_opts[:headers] || {}
-      cache_control = headers['Cache-Control'] || ''
+      cache_control = CacheControl.parse_headers(req_opts[:headers])
+      cache_ttl = cache_control.max_cache_ttl
 
-      max_age = cache_control.match(/max-age=(\d+)/) { |m| m[1].to_i } || DEFAULT_TTL
-      stale_white_revalidate_age = cache_control.match(/stale-while-revalidate=(\d+)/) { |m| m[1].to_i } || 0
-      sif_error_age = cache_control.match(/stale-if-error=(\d+)/) { |m| m[1].to_i } || 0
-
-      # Cache the response with a TTL of max_age + a grace period to allow
-      # for stale responses to be served while the cache is being revalidated.
-      cache_ttl = max_age + [stale_white_revalidate_age, sif_error_age].max
       now = Time.now.to_i
 
       cache_hit = nil
       cas_token = nil
-      unless cache_control.include?('no-cache')
+      unless cache_control.no_cache
         cache_hit, cas_token = cache.get_cas(cache_key)
 
         # The cache is still fresh, return the cached response
-        if cache_hit && cache_hit[:cached_at] + max_age >= now
+        if cache_hit && cache_hit[:cached_at] + cache_control.max_age >= now
           return cached_response(cache_hit, now)
         end
       end
 
       # The cache is stale, but we can return a stale response while revalidating in a background
       # thread if the cache control allows it.
-      if cache_hit && stale_white_revalidate_age > 0
+      if cache_hit && cache_control.stale_while_revalidate > 0
         # Revalidate the cache in the background
         thread_pool.post do
           response = super
@@ -54,7 +47,7 @@ class CachedHelloWorldClient < ::Twirp::Client
         end
 
         # Return the stale cached response if we are still within the stale-while-revalidate grace period
-        if cache_hit[:cached_at] + max_age + stale_white_revalidate_age >= now
+        if cache_hit[:cached_at] + cache_control.max_age + cache_control.stale_while_revalidate >= now
           return cached_response(cache_hit, now)
         end
       end
@@ -64,21 +57,47 @@ class CachedHelloWorldClient < ::Twirp::Client
 
       if response.success?
         # The request was successful, cache the response unless specifically asked not to
-        unless cache_control.include?('no-store')
+        unless cache_control.no_store
           cache_response(response, cache_key, cache_ttl, cas_token)
         end
       else
         # The request failed, check if we can return a stale response
-        if cache_hit && sif_error_age > 0
+        if cache_hit && cache_control.stale_if_error > 0
           # Return the stale cached response if the backend request failed and
           # we are still within the stale-if-error grace period
-          if cache_hit[:cached_at] + max_age + sif_error_age >= now
+          if cache_hit[:cached_at] + cache_control.max_age + cache_control.stale_if_error >= now
             return cached_response(cache_hit, now)
           end
         end
       end
 
       return uncached_response(response)
+    end
+
+    CacheControl = Data.define(:max_age, :stale_while_revalidate, :stale_if_error, :no_cache, :no_store) do
+      def self.parse_headers(headers)
+        cache_control = headers&.[]('Cache-Control') || ''
+
+        max_age = cache_control.match(/max-age=(\d+)/) { |m| m[1].to_i } || DEFAULT_TTL
+        stale_while_revalidate = cache_control.match(/stale-while-revalidate=(\d+)/) { |m| m[1].to_i } || 0
+        stale_if_error = cache_control.match(/stale-if-error=(\d+)/) { |m| m[1].to_i } || 0
+        no_cache = cache_control.include?('no-cache')
+        no_store = cache_control.include?('no-store')
+
+        return self.new(
+          max_age:,
+          stale_while_revalidate:,
+          stale_if_error:,
+          no_cache:,
+          no_store:,
+        )
+      end
+
+      # Cache the response with a TTL of max_age + a grace period to allow
+      # for stale responses to be served while the cache is being revalidated.
+      def max_cache_ttl
+        max_age + [stale_while_revalidate, stale_if_error].max
+      end
     end
 
     def cache_key_for(service_full_name, rpc_method, body)
