@@ -10,8 +10,23 @@ require_relative '../proto/service_twirp.rb'
 # Service implementation
 class HelloWorldHandler
   def hello(req, env)
+    @error_requests ||= {}
+
+    # For requests with "error" in the name, serve the first response correctly, then return an error
+    # on all subsequent requests (to test error handling in the client)
+    if req.name.include?("error")
+      if @error_requests[req.name]
+        puts ">> Erroring on request #{req.name}"
+        return Twirp::Error.new(:unavailable, "Error on request #{req.name}")
+      end
+
+      @error_requests[req.name] = true
+    end
+
     puts ">> Hello #{req.name}"
-    {message: "Hello #{req.name} on #{Time.now.to_f}"}
+    {
+      message: "Hello #{req.name} on #{Time.now.to_f}"
+    }
   end
 end
 

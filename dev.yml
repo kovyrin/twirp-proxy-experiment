@@ -5,6 +5,7 @@ type: ruby
 up:
   - ruby
   - bundler
+  - memcached
 
   - packages:
     - varnish
