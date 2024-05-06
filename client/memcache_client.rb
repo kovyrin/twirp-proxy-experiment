@@ -10,119 +10,106 @@ require 'concurrent-ruby'
 require_relative '../proto/service_twirp.rb'
 
 class CachedHelloWorldClient < ::Twirp::Client
-  DEFAULT_TTL = 60 # seconds
-
-  def self.cache=(cache)
-    @cache = cache
-  end
-
-  def self.cache
-    @cache
-  end
-
-  def self.thread_pool=(thread_pool)
-    @thread_pool = thread_pool
-  end
-
-  def self.thread_pool
-    @thread_pool
-  end
-
   client_for Example::HelloWorld::HelloWorldService
+  class << self
+    attr_accessor :cache, :thread_pool
 
-  def self.make_http_request(conn, service_full_name, rpc_method, content_type, req_opts, body)
-    cache_key = cache_key_for(service_full_name, rpc_method, body)
+    DEFAULT_TTL = 60 # seconds
 
-    headers = req_opts[:headers] || {}
-    cache_control = headers['Cache-Control'] || ''
+    def make_http_request(conn, service_full_name, rpc_method, content_type, req_opts, body)
+      cache_key = cache_key_for(service_full_name, rpc_method, body)
 
-    max_age = cache_control.match(/max-age=(\d+)/) { |m| m[1].to_i } || DEFAULT_TTL
-    stale_white_revalidate_age = cache_control.match(/stale-while-revalidate=(\d+)/) { |m| m[1].to_i } || 0
-    sif_error_age = cache_control.match(/stale-if-error=(\d+)/) { |m| m[1].to_i } || 0
+      headers = req_opts[:headers] || {}
+      cache_control = headers['Cache-Control'] || ''
 
-    # Cache the response with a TTL of max_age + a grace period to allow
-    # for stale responses to be served while the cache is being revalidated.
-    cache_ttl = max_age + [stale_white_revalidate_age, sif_error_age].max
-    now = Time.now.to_i
+      max_age = cache_control.match(/max-age=(\d+)/) { |m| m[1].to_i } || DEFAULT_TTL
+      stale_white_revalidate_age = cache_control.match(/stale-while-revalidate=(\d+)/) { |m| m[1].to_i } || 0
+      sif_error_age = cache_control.match(/stale-if-error=(\d+)/) { |m| m[1].to_i } || 0
 
-    cache_hit = nil
-    cas_token = nil
-    unless cache_control.include?('no-cache')
-      cache_hit, cas_token = cache.get_cas(cache_key)
+      # Cache the response with a TTL of max_age + a grace period to allow
+      # for stale responses to be served while the cache is being revalidated.
+      cache_ttl = max_age + [stale_white_revalidate_age, sif_error_age].max
+      now = Time.now.to_i
 
-      # The cache is still fresh, return the cached response
-      if cache_hit && cache_hit[:cached_at] + max_age >= now
-        return cached_response(cache_hit, now)
-      end
-    end
+      cache_hit = nil
+      cas_token = nil
+      unless cache_control.include?('no-cache')
+        cache_hit, cas_token = cache.get_cas(cache_key)
 
-    # The cache is stale, but we can return a stale response while revalidating in a background
-    # thread if the cache control allows it.
-    if cache_hit && stale_white_revalidate_age > 0
-      # Revalidate the cache in the background
-      thread_pool.post do
-        response = super
-        if response.success?
-          cache_response(response, cache_key, cache_ttl, cas_token)
-        end
-      end
-
-      # Return the stale cached response if we are still within the stale-while-revalidate grace period
-      if cache_hit[:cached_at] + max_age + stale_white_revalidate_age >= now
-        return cached_response(cache_hit, now)
-      end
-    end
-
-    # The cache is either empty or expired, make the request to the upstream service
-    response = super
-
-    if response.success?
-      # The request was successful, cache the response unless specifically asked not to
-      unless cache_control.include?('no-store')
-        cache_response(response, cache_key, cache_ttl, cas_token)
-      end
-    else
-      # The request failed, check if we can return a stale response
-      if cache_hit && sif_error_age > 0
-        # Return the stale cached response if the backend request failed and
-        # we are still within the stale-if-error grace period
-        if cache_hit[:cached_at] + max_age + sif_error_age >= now
+        # The cache is still fresh, return the cached response
+        if cache_hit && cache_hit[:cached_at] + max_age >= now
           return cached_response(cache_hit, now)
         end
       end
+
+      # The cache is stale, but we can return a stale response while revalidating in a background
+      # thread if the cache control allows it.
+      if cache_hit && stale_white_revalidate_age > 0
+        # Revalidate the cache in the background
+        thread_pool.post do
+          response = super
+          if response.success?
+            cache_response(response, cache_key, cache_ttl, cas_token)
+          end
+        end
+
+        # Return the stale cached response if we are still within the stale-while-revalidate grace period
+        if cache_hit[:cached_at] + max_age + stale_white_revalidate_age >= now
+          return cached_response(cache_hit, now)
+        end
+      end
+
+      # The cache is either empty or expired, make the request to the upstream service
+      response = super
+
+      if response.success?
+        # The request was successful, cache the response unless specifically asked not to
+        unless cache_control.include?('no-store')
+          cache_response(response, cache_key, cache_ttl, cas_token)
+        end
+      else
+        # The request failed, check if we can return a stale response
+        if cache_hit && sif_error_age > 0
+          # Return the stale cached response if the backend request failed and
+          # we are still within the stale-if-error grace period
+          if cache_hit[:cached_at] + max_age + sif_error_age >= now
+            return cached_response(cache_hit, now)
+          end
+        end
+      end
+
+      return uncached_response(response)
     end
 
-    return uncached_response(response)
-  end
+    def cache_key_for(service_full_name, rpc_method, body)
+      "#{service_full_name}/#{rpc_method}/#{Digest::SHA256.hexdigest(body)}"
+    end
 
-  def self.cache_key_for(service_full_name, rpc_method, body)
-    "#{service_full_name}/#{rpc_method}/#{Digest::SHA256.hexdigest(body)}"
-  end
+    def cached_response(cache_response, now)
+      response = cache_response[:response]
+      cached_at = cache_response[:cached_at]
 
-  def self.cached_response(cache_response, now)
-    response = cache_response[:response]
-    cached_at = cache_response[:cached_at]
+      response.headers['X-Cache'] = 'HIT'
+      response.headers['Age'] = now - cached_at
 
-    response.headers['X-Cache'] = 'HIT'
-    response.headers['Age'] = now - cached_at
+      response
+    end
 
-    response
-  end
+    def uncached_response(response)
+      response.headers['X-Cache'] = 'MISS'
+      response.headers['Age'] = 0
+      response
+    end
 
-  def self.uncached_response(response)
-    response.headers['X-Cache'] = 'MISS'
-    response.headers['Age'] = 0
-    response
-  end
-
-  def self.cache_response(response, cache_key, cache_ttl, cas_token)
-    cas_token ||= 0 # default value for first time cache writes
-    cache_value = {
-      response: response,
-      cached_at: Time.now.to_i,
-    }
-    # CAS ensures we do not overwrite a newer cache entry
-    cache.set_cas(cache_key, cache_value, cas_token, cache_ttl)
+    def cache_response(response, cache_key, cache_ttl, cas_token)
+      cas_token ||= 0 # default value for first time cache writes
+      cache_value = {
+        response: response,
+        cached_at: Time.now.to_i,
+      }
+      # CAS ensures we do not overwrite a newer cache entry
+      cache.set_cas(cache_key, cache_value, cas_token, cache_ttl)
+    end
   end
 end
 
