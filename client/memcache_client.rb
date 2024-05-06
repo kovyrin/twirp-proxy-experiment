@@ -75,12 +75,10 @@ class CachedHelloWorldClient < ::Twirp::Client
 
     CacheControl = Data.define(:max_age, :stale_while_revalidate, :stale_if_error, :no_cache, :no_store) do
       def self.parse_headers(headers)
-        cache_control = headers&.[]('Cache-Control') || ''
+        cache_control = headers ? headers.fetch('Cache-Control', '') : ''
 
         max_age = cache_control.match(/max-age=(\d+)/) { |m| m[1].to_i } || DEFAULT_TTL
-        stale_while_revalidate = cache_control.match(/stale-while-revalidate=(\d+)/) do |m|
-          m[1].to_i
-        end || 0
+        stale_while_revalidate = cache_control.match(/stale-while-revalidate=(\d+)/) { |m| m[1].to_i } || 0
         stale_if_error = cache_control.match(/stale-if-error=(\d+)/) { |m| m[1].to_i } || 0
         no_cache = cache_control.include?('no-cache')
         no_store = cache_control.include?('no-store')
