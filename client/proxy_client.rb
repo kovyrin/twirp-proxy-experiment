@@ -2,8 +2,10 @@
 # frozen_string_literal: true
 
 require 'bundler/setup'
-require_relative '../proto/service_twirp'
 require 'securerandom'
+
+require_relative '../proto/service_twirp'
+require_relative 'test_helpers'
 
 # Call the API via a local proxy
 CLIENT = Example::HelloWorld::HelloWorldClient.new('http://localhost:3002/twirp')
@@ -18,34 +20,6 @@ def hello(name, headers: {})
 
   puts "  - Response: #{resp.data.message.inspect} (cache: #{resp.headers['X-Cache']}, age: #{resp.headers['age']})"
   resp.data.message
-end
-
-def assert_equal(res1, res2)
-  if res1 == res2
-    puts "+ OK: Results match (#{res1.inspect})"
-  else
-    puts "ERROR! Results do not match! (#{res1.inspect} != #{res2.inspect})"
-    exit(1)
-  end
-  puts
-end
-
-def refute_equal(res1, res2)
-  if res1 != res2
-    puts "+ OK: Results do not match (#{res1.inspect} != #{res2.inspect})"
-  else
-    puts "ERROR! Results match! (#{res1.inspect})"
-    exit(1)
-  end
-  puts
-end
-
-def sleep_with_progress(seconds)
-  seconds.times do
-    print '.'
-    sleep(1)
-  end
-  puts
 end
 
 puts '--------------------------------------------------------------------------'
